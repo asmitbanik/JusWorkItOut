@@ -33,7 +33,6 @@ const weatherWorkouts = {
 
 const dietTypes = {
     protein: {
-        query: 'high protein chicken beef fish',
         meals: [
             { name: 'Grilled Chicken Breast', calories: 165, protein: 31, carbs: 0, fat: 3.6 },
             { name: 'Salmon Fillet', calories: 208, protein: 22, carbs: 0, fat: 13 },
@@ -42,7 +41,6 @@ const dietTypes = {
         ]
     },
     carbs: {
-        query: 'pasta rice potato bread',
         meals: [
             { name: 'Whole Grain Pasta', calories: 350, protein: 12, carbs: 74, fat: 1.3 },
             { name: 'Brown Rice Bowl', calories: 280, protein: 6, carbs: 58, fat: 2.2 },
@@ -51,36 +49,26 @@ const dietTypes = {
         ]
     },
     balanced: {
-        query: 'balanced healthy meal',
         meals: [
             { name: 'Chicken & Rice Bowl', calories: 400, protein: 25, carbs: 45, fat: 12 },
             { name: 'Mediterranean Salad', calories: 350, protein: 15, carbs: 35, fat: 15 },
             { name: 'Tofu Stir-Fry', calories: 380, protein: 20, carbs: 40, fat: 14 },
             { name: 'Fish Tacos', calories: 420, protein: 28, carbs: 42, fat: 16 }
         ]
-    },
-    junk: {
-        query: 'fast food burger pizza',
-        meals: [
-            { name: 'Cheeseburger', calories: 550, protein: 25, carbs: 42, fat: 29 },
-            { name: 'Pizza Slice', calories: 285, protein: 12, carbs: 36, fat: 10 },
-            { name: 'French Fries', calories: 365, protein: 4, carbs: 44, fat: 17 },
-            { name: 'Chicken Wings', calories: 430, protein: 38, carbs: 0, fat: 32 }
-        ]
     }
 };
 
 const calendar = new FullCalendar.Calendar(calendarContainer, {
     initialView: 'dayGridMonth',
-    events: [],
+    events: JSON.parse(localStorage.getItem('calendarEvents')) || [],
     dateClick: (info) => {
         const workoutType = prompt('Enter workout type:');
         if (workoutType) {
-            calendar.addEvent({
-                title: workoutType,
-                start: info.dateStr,
-                allDay: true,
-            });
+            let events = JSON.parse(localStorage.getItem('calendarEvents')) || [];
+            let newEvent = { title: workoutType, start: info.dateStr, allDay: true };
+            events.push(newEvent);
+            localStorage.setItem('calendarEvents', JSON.stringify(events));
+            calendar.addEvent(newEvent);
         }
     },
 });
@@ -105,16 +93,12 @@ function suggestWorkouts(weatherCondition) {
         workoutList = weatherWorkouts.Extreme;
     }
 
-    const suggestionsHTML = workoutList
-        .map(workout => `
-            <div class="workout-suggestion">
-                <h4>${workout.type}</h4>
-                <p>${workout.description}</p>
-            </div>
-        `)
-        .join('');
-
-    workoutSuggestions.innerHTML = suggestionsHTML;
+    workoutSuggestions.innerHTML = workoutList.map(workout => `
+        <div class="workout-suggestion">
+            <h4>${workout.type}</h4>
+            <p>${workout.description}</p>
+        </div>
+    `).join('');
 }
 
 workoutForm.addEventListener('submit', (e) => {
@@ -132,29 +116,28 @@ workoutForm.addEventListener('submit', (e) => {
 });
 
 function updateWorkoutChart(type, duration) {
+    let storedWorkouts = JSON.parse(localStorage.getItem('workouts')) || [];
+
+    storedWorkouts.push({ type, duration });
+    localStorage.setItem('workouts', JSON.stringify(storedWorkouts));
+
     if (!workoutChart) {
         workoutChart = new Chart(workoutChartCtx, {
             type: 'bar',
             data: {
-                labels: [type],
+                labels: storedWorkouts.map(workout => workout.type),
                 datasets: [{
                     label: 'Workout Duration (mins)',
-                    data: [duration],
+                    data: storedWorkouts.map(workout => workout.duration),
                     backgroundColor: '#E17564',
                     borderColor: '#BE3144',
                     borderWidth: 1,
                 }]
-            },
-            options: {
-                scales: {
-                    y: { beginAtZero: true, ticks: { color: 'black' } },
-                    x: { ticks: { color: 'black' } }
-                }
             }
         });
     } else {
-        workoutChart.data.labels.push(type);
-        workoutChart.data.datasets[0].data.push(duration);
+        workoutChart.data.labels = storedWorkouts.map(workout => workout.type);
+        workoutChart.data.datasets[0].data = storedWorkouts.map(workout => workout.duration);
         workoutChart.update();
     }
 }
@@ -176,6 +159,8 @@ function displayMeals(meals) {
 }
 
 function updateMealChart(meals) {
+    localStorage.setItem('meals', JSON.stringify(meals));
+
     if (!mealChart) {
         mealChart = new Chart(mealChartCtx, {
             type: 'pie',
@@ -184,9 +169,7 @@ function updateMealChart(meals) {
                 datasets: [{
                     label: 'Calories',
                     data: meals.map(meal => meal.calories),
-                    backgroundColor: ['#E17564', '#BE3144', '#872341', '#09122C'],
-                    borderColor: ['#E17564', '#BE3144', '#872341', '#09122C'],
-                    borderWidth: 1
+                    backgroundColor: ['#E17564', '#BE3144', '#872341', '#09122C']
                 }]
             }
         });
@@ -197,35 +180,17 @@ function updateMealChart(meals) {
     }
 }
 
-mealForm.addEventListener('submit', async (e) => {
+mealForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const dietType = document.getElementById('diet-type').value;
-    if (!dietType) {
-        alert('Please select a diet type');
-        return;
-    }
     const meals = getMealPlan(dietType);
     displayMeals(meals);
     updateMealChart(meals);
 });
 
-const OPENWEATHER_API_KEY = '9e876817cc5456f83515f084a1b6fdb0';
-
-async function fetchWeather() {
-    const city = 'Bengaluru';
-    const url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${OPENWEATHER_API_KEY}&units=metric`;
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        const weatherDescription = data.weather[0].description;
-        weatherInfo.innerHTML = `🌡️ ${data.main.temp}°C, ${weatherDescription}`;
-        
-        suggestWorkouts(weatherDescription);
-    } catch (error) {
-        weatherInfo.innerHTML = 'Error fetching weather data';
-        console.error('Error:', error);
-    }
-}
+window.addEventListener('load', () => {
+    updateWorkoutChart();
+    displayMeals(JSON.parse(localStorage.getItem('meals')) || []);
+});
 
 fetchWeather();
